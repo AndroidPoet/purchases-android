@@ -2,7 +2,6 @@ package com.revenuecat.purchases.ui.revenuecatui.checkpoints
 
 import com.revenuecat.purchases.CacheFetchPolicy
 import com.revenuecat.purchases.CustomerInfo
-import com.revenuecat.purchases.Offering
 import com.revenuecat.purchases.Purchases
 import com.revenuecat.purchases.PurchasesError
 import com.revenuecat.purchases.PurchasesErrorCode
@@ -119,11 +118,8 @@ internal class CheckpointsManager(
             when (resolution) {
                 is CheckpointResolution.MatchedOffering -> presentOffering(
                     purchases,
-                    identifier,
-                    resolution.offering,
-                    customVariables,
+                    PaywallPresenter.Params(resolution.offering, identifier, customVariables, presentationMode),
                     presenter,
-                    presentationMode,
                 )
                 is CheckpointResolution.MatchedWorkflow ->
                     present(purchases, resolution, customVariables, presentationMode)
@@ -263,49 +259,28 @@ internal class CheckpointsManager(
     }
 
     /**
-     * Presents a matched offering through [presenter] (the call's own, else the registered [paywallPresenter])
-     * when there is one, and through the SDK's own [DefaultPaywallPresenter] otherwise; both learn the resolved
-     * [presentationMode] through [PaywallPresenter.Params]. Either way the presentation claims the same
-     * one-presentation-at-a-time slot as workflows and resolves through its completion's first report, after the
-     * SDK has synced the store purchases made during it.
+     * Presents a matched offering, described by [params] (resolved presentation mode included), through
+     * [presenter] (the call's own, else the registered [paywallPresenter]) when there is one, and through the SDK's
+     * own [DefaultPaywallPresenter] otherwise. Either way the presentation claims the same one-presentation-at-a-time
+     * slot as workflows and resolves through its completion's first report, after the SDK has synced the store
+     * purchases made during it.
      */
     private suspend fun presentOffering(
         purchases: Purchases,
-        identifier: String,
-        offering: Offering,
-        customVariables: Map<String, CustomVariableValue>,
+        params: PaywallPresenter.Params,
         presenter: PaywallPresenter?,
-        presentationMode: CheckpointPresentationMode,
-    ): CheckpointRun {
-        return presentThroughPresenter(
-            purchases,
-            identifier,
-            offering,
-            customVariables,
-            presenter ?: defaultPresenterFactory(purchases),
-            presentationMode,
-        )
-    }
-
-    private suspend fun presentThroughPresenter(
-        purchases: Purchases,
-        identifier: String,
-        offering: Offering,
-        customVariables: Map<String, CustomVariableValue>,
-        presenter: PaywallPresenter,
-        presentationMode: CheckpointPresentationMode,
     ): CheckpointRun {
         val call = PendingCall(
             UUID.randomUUID().toString(),
             workflow = null,
             activeEntitlementsBefore = null,
-            customVariables,
+            params.customVariables,
             CompletableDeferred(),
         )
         if (!slot.claim(call)) return blockedByPresentedFlow
         try {
-            presenter.present(
-                PaywallPresenter.Params(offering, identifier, customVariables, presentationMode),
+            (presenter ?: defaultPresenterFactory(purchases)).present(
+                params,
                 PresenterCompletion(call.callId, purchases),
             )
             return call.flowFinished.await()
