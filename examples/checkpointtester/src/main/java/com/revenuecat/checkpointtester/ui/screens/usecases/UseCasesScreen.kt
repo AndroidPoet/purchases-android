@@ -1,3 +1,5 @@
+@file:OptIn(InviteOnlyCheckpointsAPI::class)
+
 package com.revenuecat.checkpointtester.ui.screens.usecases
 
 import androidx.compose.foundation.clickable
@@ -24,6 +26,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.revenuecat.checkpointtester.checkpoints.PaywallPresenters
+import com.revenuecat.purchases.ui.revenuecatui.InviteOnlyCheckpointsAPI
+import com.revenuecat.purchases.ui.revenuecatui.checkpoints.CheckpointPresentationMode
 import com.revenuecat.checkpointtester.ui.Screen
 import com.revenuecat.checkpointtester.ui.theme.CheckpointTesterTheme
 
@@ -61,6 +65,12 @@ private val NAVIGATED_USE_CASES = listOf(
     ),
 )
 
+private val PRESENTATION_MODE_LABELS = mapOf(
+    CheckpointPresentationMode.DEFAULT to "Default",
+    CheckpointPresentationMode.FULL_SCREEN to "Full screen",
+    CheckpointPresentationMode.SHEET to "Sheet",
+)
+
 private val INLINE_USE_CASES = listOf(
     InlineUseCase(
         identifier = "offering_checkpoint",
@@ -89,11 +99,30 @@ fun UseCasesScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val presenterMode by PaywallPresenters.mode.collectAsState()
+    val presentationMode by PaywallPresenters.presentationMode.collectAsState()
 
     LazyColumn(modifier = modifier.fillMaxSize()) {
         item {
             SectionHeader(text = "Paywall presenter")
-            PresenterSelector(mode = presenterMode, onSelect = PaywallPresenters::select)
+            SegmentedSelector(
+                options = PaywallPresenters.Mode.entries,
+                selected = presenterMode,
+                label = { it.label },
+                description = presenterMode.description,
+                onSelect = PaywallPresenters::select,
+            )
+        }
+        item {
+            SectionHeader(text = "Presentation mode")
+            SegmentedSelector(
+                options = PRESENTATION_MODE_LABELS.keys.toList(),
+                selected = presentationMode,
+                label = PRESENTATION_MODE_LABELS::getValue,
+                description = "How the flow is presented. The SDK follows it for workflows and for offerings in " +
+                    "the Default presenter mode; the app's own presenters above receive it and follow it too. " +
+                    "Default lets the SDK choose (currently a sheet).",
+                onSelect = PaywallPresenters::selectPresentationMode,
+            )
         }
         item {
             SectionHeader(text = "App-driven use cases")
@@ -130,28 +159,30 @@ fun UseCasesScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PresenterSelector(
-    mode: PaywallPresenters.Mode,
-    onSelect: (PaywallPresenters.Mode) -> Unit,
+private fun <T> SegmentedSelector(
+    options: List<T>,
+    selected: T,
+    label: (T) -> String,
+    description: String,
+    onSelect: (T) -> Unit,
 ) {
-    val modes = PaywallPresenters.Mode.entries
     Column(
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-            modes.forEachIndexed { index, candidate ->
+            options.forEachIndexed { index, candidate ->
                 SegmentedButton(
-                    selected = candidate == mode,
+                    selected = candidate == selected,
                     onClick = { onSelect(candidate) },
-                    shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
+                    shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
                 ) {
-                    Text(text = candidate.label)
+                    Text(text = label(candidate))
                 }
             }
         }
         Text(
-            text = mode.description,
+            text = description,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

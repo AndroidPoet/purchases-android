@@ -12,6 +12,7 @@ import com.revenuecat.paywallstester.ui.screens.checkpoints.CheckpointsViewModel
 import com.revenuecat.purchases.Purchases
 import com.revenuecat.purchases.ui.revenuecatui.InviteOnlyCheckpointsAPI
 import com.revenuecat.purchases.ui.revenuecatui.checkpoints.CheckpointParams
+import com.revenuecat.purchases.ui.revenuecatui.checkpoints.CheckpointPresentationMode
 import com.revenuecat.purchases.ui.revenuecatui.checkpoints.FlowResult
 import com.revenuecat.purchases.ui.revenuecatui.checkpoints.PaywallPresenter
 import com.revenuecat.purchases.ui.revenuecatui.checkpoints.checkpoint
@@ -33,6 +34,7 @@ interface CheckpointsViewModel {
         val waitingFor: String? = null,
         val lastResult: CheckpointResultUi? = null,
         val presentWithAppPaywall: Boolean = false,
+        val presentationMode: CheckpointPresentationMode = CheckpointPresentationMode.DEFAULT,
     )
 
     val state: StateFlow<UiState>
@@ -42,6 +44,8 @@ interface CheckpointsViewModel {
     fun hit(identifier: String)
 
     fun setPresentWithAppPaywall(enabled: Boolean)
+
+    fun setPresentationMode(mode: CheckpointPresentationMode)
 }
 
 internal class CheckpointsViewModelImpl(
@@ -77,6 +81,7 @@ internal class CheckpointsViewModelImpl(
         val params = CheckpointParams {
             customVariables { "source" to "paywall-tester" }
             if (_state.value.presentWithAppPaywall) paywallPresenter(appPaywallPresenter)
+            presentationMode(_state.value.presentationMode)
         }
         Purchases.sharedInstance.checkpoint(checkpointIdentifier, params) { result ->
             _state.update { it.copy(waitingFor = null, lastResult = result.toUi()) }
@@ -85,6 +90,10 @@ internal class CheckpointsViewModelImpl(
 
     override fun setPresentWithAppPaywall(enabled: Boolean) {
         _state.update { it.copy(presentWithAppPaywall = enabled) }
+    }
+
+    override fun setPresentationMode(mode: CheckpointPresentationMode) {
+        _state.update { it.copy(presentationMode = mode) }
     }
 
     private fun onAppPaywallFinished(result: PaywallPresenter.Completion.Result) {

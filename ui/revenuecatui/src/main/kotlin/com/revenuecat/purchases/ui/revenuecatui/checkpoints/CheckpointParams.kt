@@ -24,6 +24,9 @@ public annotation class CheckpointParamsDsl
  * registered through [com.revenuecat.purchases.ui.revenuecatui.checkpoints.paywallPresenter]. When neither is set,
  * the offering's configured paywall is presented, falling back to the default paywall.
  *
+ * [presentationMode] decides how the SDK presents the flow itself, full screen or as a sheet, or leaves the choice
+ * to the SDK with [CheckpointPresentationMode.DEFAULT]; app-owned presenters are not affected.
+ *
  * Built through [Builder], or the DSL:
  * ```kotlin
  * val params = CheckpointParams {
@@ -40,6 +43,7 @@ public annotation class CheckpointParamsDsl
 public class CheckpointParams private constructor(
     customVariables: Map<String, CustomVariableValue>,
     public val paywallPresenter: PaywallPresenter?,
+    public val presentationMode: CheckpointPresentationMode,
 ) {
 
     /**
@@ -54,18 +58,22 @@ public class CheckpointParams private constructor(
     override fun equals(other: Any?): Boolean =
         other is CheckpointParams &&
             other.customVariables == customVariables &&
-            other.paywallPresenter == paywallPresenter
+            other.paywallPresenter == paywallPresenter &&
+            other.presentationMode == presentationMode
 
-    override fun hashCode(): Int = 31 * customVariables.hashCode() + paywallPresenter.hashCode()
+    override fun hashCode(): Int =
+        31 * (31 * customVariables.hashCode() + paywallPresenter.hashCode()) + presentationMode.hashCode()
 
     override fun toString(): String =
-        "CheckpointParams(customVariables=$customVariables, paywallPresenter=$paywallPresenter)"
+        "CheckpointParams(customVariables=$customVariables, paywallPresenter=$paywallPresenter, " +
+            "presentationMode=$presentationMode)"
 
     @CheckpointParamsDsl
     public class Builder {
 
         private var customVariables: Map<String, CustomVariableValue> = emptyMap()
         private var paywallPresenter: PaywallPresenter? = null
+        private var presentationMode: CheckpointPresentationMode = CheckpointPresentationMode.DEFAULT
 
         /** Replaces any previously set custom variables. */
         public fun setCustomVariables(customVariables: Map<String, CustomVariableValue>): Builder = apply {
@@ -88,7 +96,17 @@ public class CheckpointParams private constructor(
         public fun paywallPresenter(paywallPresenter: PaywallPresenter): Builder =
             setPaywallPresenter(paywallPresenter)
 
-        public fun build(): CheckpointParams = CheckpointParams(customVariables, paywallPresenter)
+        /** How the SDK presents the flow this call resolves to. Defaults to [CheckpointPresentationMode.DEFAULT]. */
+        public fun setPresentationMode(presentationMode: CheckpointPresentationMode): Builder = apply {
+            this.presentationMode = presentationMode
+        }
+
+        /** How the SDK presents the flow this call resolves to. Defaults to [CheckpointPresentationMode.DEFAULT]. */
+        @JvmSynthetic
+        public fun presentationMode(presentationMode: CheckpointPresentationMode): Builder =
+            setPresentationMode(presentationMode)
+
+        public fun build(): CheckpointParams = CheckpointParams(customVariables, paywallPresenter, presentationMode)
     }
 
     /**

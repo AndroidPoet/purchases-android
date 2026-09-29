@@ -40,6 +40,7 @@ class DefaultPaywallPresenterTest {
         offering,
         "test_checkpoint",
         mapOf("goal" to CustomVariableValue.String("test")),
+        CheckpointPresentationMode.FULL_SCREEN,
     )
     private val events = mutableListOf<String>()
     private val results = mutableListOf<Result>()
@@ -55,6 +56,7 @@ class DefaultPaywallPresenterTest {
     private lateinit var mockPurchases: Purchases
     private lateinit var mockWindow: CheckpointWorkflowPresenter
     private var windowCallId: String? = null
+    private var windowMode: CheckpointPresentationMode? = null
     private lateinit var presenter: DefaultPaywallPresenter
 
     @Before
@@ -65,8 +67,9 @@ class DefaultPaywallPresenterTest {
         mockPurchases = mockk { every { currentActivity } returns mockActivity }
         cachedActiveEntitlements()
         mockWindow = mockk(relaxed = true)
-        presenter = DefaultPaywallPresenter(mockPurchases) { callId, host ->
+        presenter = DefaultPaywallPresenter(mockPurchases) { callId, host, mode ->
             windowCallId = callId
+            windowMode = mode
             assertThat(host).isSameAs(presenter)
             mockWindow
         }
@@ -98,6 +101,21 @@ class DefaultPaywallPresenterTest {
         assertThat(options.listener).isNotNull
         assertThat(options.injectedWorkflow).isNull()
         assertThat(options.injectedWorkflowOfferings).isNull()
+    }
+
+    @Test
+    fun `the window is presented the way the params ask`() {
+        present()
+        assertThat(windowMode).isEqualTo(CheckpointPresentationMode.FULL_SCREEN)
+
+        val sheetParams = PaywallPresenter.Params(
+            offering,
+            params.checkpointIdentifier,
+            params.customVariables,
+            CheckpointPresentationMode.SHEET,
+        )
+        presenter.present(sheetParams, completion)
+        assertThat(windowMode).isEqualTo(CheckpointPresentationMode.SHEET)
     }
 
     @Test

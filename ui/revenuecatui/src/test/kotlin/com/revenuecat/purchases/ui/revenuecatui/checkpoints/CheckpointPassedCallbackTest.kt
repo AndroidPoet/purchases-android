@@ -66,12 +66,12 @@ class CheckpointPassedCallbackTest {
         }
         cachedCustomerInfoHasActive()
         manager = CheckpointsManager(
-            presenterFactory = { callId, _ ->
+            presenterFactory = { callId, _, _ ->
                 presentedCallIds += callId
                 mockPresenter
             },
             defaultPresenterFactory = { purchases ->
-                DefaultPaywallPresenter(purchases) { _, _ -> mockPresenter }.also { defaultPresenter = it }
+                DefaultPaywallPresenter(purchases) { _, _, _ -> mockPresenter }.also { defaultPresenter = it }
             },
         )
     }

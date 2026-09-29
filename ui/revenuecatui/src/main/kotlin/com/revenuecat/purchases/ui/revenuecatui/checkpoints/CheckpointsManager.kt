@@ -71,8 +71,11 @@ internal class CheckpointsManager(
     // Owns the coroutines behind the callback-based gate API, so an un-awaited checkpoint lives and dies with
     // the Purchases instance holding this manager rather than with any caller scope.
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
-    private val presenterFactory: (callId: String, manager: CheckpointsManager) -> CheckpointWorkflowPresenter =
-        { callId, manager -> CheckpointWorkflowPresenter(callId, manager) },
+    private val presenterFactory: (
+        callId: String,
+        manager: CheckpointsManager,
+        presentationMode: CheckpointPresentationMode,
+    ) -> CheckpointWorkflowPresenter = { callId, manager, mode -> CheckpointWorkflowPresenter(callId, manager, mode) },
     private val defaultPresenterFactory: (Purchases) -> DefaultPaywallPresenter = { DefaultPaywallPresenter(it) },
 ) : CheckpointPresentationHost {
 
@@ -98,6 +101,7 @@ internal class CheckpointsManager(
     ): CheckpointRun = withContext(Dispatchers.Main) {
         val customVariables = (params ?: CheckpointParams {}).customVariables
         val presenter = params?.paywallPresenter ?: paywallPresenter
+        val presentationMode = resolvePresentationMode(params?.presentationMode)
         if (!CheckpointIdentifierValidator.isValid(identifier)) {
             Logger.e(CheckpointIdentifierValidator.invalidIdentifierLogMessage(identifier))
             return@withContext nothingPresented
@@ -113,9 +117,16 @@ internal class CheckpointsManager(
         }
         try {
             when (resolution) {
-                is CheckpointResolution.MatchedOffering ->
-                    presentOffering(purchases, identifier, resolution.offering, customVariables, presenter)
-                is CheckpointResolution.MatchedWorkflow -> present(purchases, resolution, customVariables)
+                is CheckpointResolution.MatchedOffering -> presentOffering(
+                    purchases,
+                    identifier,
+                    resolution.offering,
+                    customVariables,
+                    presenter,
+                    presentationMode,
+                )
+                is CheckpointResolution.MatchedWorkflow ->
+                    present(purchases, resolution, customVariables, presentationMode)
                 is CheckpointResolution.NoAction -> nothingPresented
             }
         } catch (_: PurchasesException) {
@@ -253,9 +264,10 @@ internal class CheckpointsManager(
 
     /**
      * Presents a matched offering through [presenter] (the call's own, else the registered [paywallPresenter])
-     * when there is one, and through the SDK's own [DefaultPaywallPresenter] otherwise. Either way the
-     * presentation claims the same one-presentation-at-a-time slot as workflows and resolves through its
-     * completion's first report, after the SDK has synced the store purchases made during it.
+     * when there is one, and through the SDK's own [DefaultPaywallPresenter] otherwise; both learn the resolved
+     * [presentationMode] through [PaywallPresenter.Params]. Either way the presentation claims the same
+     * one-presentation-at-a-time slot as workflows and resolves through its completion's first report, after the
+     * SDK has synced the store purchases made during it.
      */
     private suspend fun presentOffering(
         purchases: Purchases,
@@ -263,6 +275,7 @@ internal class CheckpointsManager(
         offering: Offering,
         customVariables: Map<String, CustomVariableValue>,
         presenter: PaywallPresenter?,
+        presentationMode: CheckpointPresentationMode,
     ): CheckpointRun {
         return presentThroughPresenter(
             purchases,
@@ -270,6 +283,7 @@ internal class CheckpointsManager(
             offering,
             customVariables,
             presenter ?: defaultPresenterFactory(purchases),
+            presentationMode,
         )
     }
 
@@ -279,6 +293,7 @@ internal class CheckpointsManager(
         offering: Offering,
         customVariables: Map<String, CustomVariableValue>,
         presenter: PaywallPresenter,
+        presentationMode: CheckpointPresentationMode,
     ): CheckpointRun {
         val call = PendingCall(
             UUID.randomUUID().toString(),
@@ -290,7 +305,7 @@ internal class CheckpointsManager(
         if (!slot.claim(call)) return blockedByPresentedFlow
         try {
             presenter.present(
-                PaywallPresenter.Params(offering, identifier, customVariables),
+                PaywallPresenter.Params(offering, identifier, customVariables, presentationMode),
                 PresenterCompletion(call.callId, purchases),
             )
             return call.flowFinished.await()
@@ -367,6 +382,7 @@ internal class CheckpointsManager(
         purchases: Purchases,
         resolution: CheckpointResolution.MatchedWorkflow,
         customVariables: Map<String, CustomVariableValue>,
+        presentationMode: CheckpointPresentationMode,
     ): CheckpointRun {
         val activity = purchases.currentActivity ?: presentationError(
             PurchasesErrorCode.ConfigurationError,
@@ -381,7 +397,7 @@ internal class CheckpointsManager(
         )
         if (!slot.claim(call)) return blockedByPresentedFlow
         try {
-            val presenter = presenterFactory(call.callId, this)
+            val presenter = presenterFactory(call.callId, this, presentationMode)
             slot.with(call.callId) { it.presenter = presenter }
             presenter.show(activity)
             return call.flowFinished.await()
@@ -404,6 +420,14 @@ internal class CheckpointsManager(
     private fun abandon(callId: String) {
         slot.take(callId)?.presenter?.abandon()
     }
+
+    // DEFAULT stands for whatever the SDK presents by default, which today is the sheet; presenters, the SDK's own
+    // included, only ever see a concrete mode.
+    private fun resolvePresentationMode(requested: CheckpointPresentationMode?): CheckpointPresentationMode =
+        when (requested) {
+            null, CheckpointPresentationMode.DEFAULT -> CheckpointPresentationMode.SHEET
+            else -> requested
+        }
 
     private val CheckpointFlowOutcome?.isObtained: Boolean
         get() = this is CheckpointFlowOutcome.Purchased || this is CheckpointFlowOutcome.Restored

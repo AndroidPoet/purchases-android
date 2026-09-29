@@ -30,8 +30,11 @@ import java.util.UUID
  */
 internal class DefaultPaywallPresenter(
     private val purchases: Purchases,
-    private val windowFactory: (callId: String, host: CheckpointPresentationHost) -> CheckpointWorkflowPresenter =
-        { callId, host -> CheckpointWorkflowPresenter(callId, host) },
+    private val windowFactory: (
+        callId: String,
+        host: CheckpointPresentationHost,
+        presentationMode: CheckpointPresentationMode,
+    ) -> CheckpointWorkflowPresenter = { callId, host, mode -> CheckpointWorkflowPresenter(callId, host, mode) },
 ) : PaywallPresenter, CheckpointPresentationHost {
 
     private lateinit var params: PaywallPresenter.Params
@@ -52,7 +55,7 @@ internal class DefaultPaywallPresenter(
         this.params = params
         this.completion = completion
         purchases.cachedActiveEntitlementIds { activeEntitlementsBefore = it }
-        val window = windowFactory(UUID.randomUUID().toString(), this)
+        val window = windowFactory(UUID.randomUUID().toString(), this, params.presentationMode)
         try {
             window.show(activity)
         } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
